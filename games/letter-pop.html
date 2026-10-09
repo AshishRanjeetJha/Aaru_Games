@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Letter Pop</title>
+<style>
+:root{--panel:#16365a;--acc:#ffd166}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:linear-gradient(#ffe3f1,#efe6ff 60%,#e3f1ff);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#gear{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;width:48px;height:48px;border-radius:50%;border:0;background:#ffffffaa;font-size:1.4rem;cursor:pointer;opacity:.6;touch-action:none}
+#gear svg{position:absolute;inset:-3px;width:54px;height:54px;transform:rotate(-90deg);pointer-events:none}
+#gear circle{fill:none;stroke:#16365a;stroke-width:3;stroke-dasharray:157;stroke-dashoffset:157}
+#gear.hold circle{stroke-dashoffset:0;transition:stroke-dashoffset 1.5s linear}
+.ov{position:fixed;inset:0;background:#0008;display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+.ov.on{display:flex}
+.card{background:var(--panel);color:#fff;border-radius:22px;padding:22px;width:min(420px,100%);max-height:100%;overflow:auto}
+.card h2{margin:0 0 6px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0}
+.row input[type=range]{flex:1;accent-color:var(--acc)}
+.val{min-width:40px;text-align:right;font-weight:700}
+.note{color:#9fb6d0;font-size:.88rem;margin:2px 0 0}
+.pri{background:var(--acc);color:#222;border:0;border-radius:14px;padding:12px 22px;font:inherit;font-weight:700;cursor:pointer;margin-top:10px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<button id="gear" aria-label="Parent settings (hold)">⚙️<svg viewBox="0 0 54 54"><circle cx="27" cy="27" r="25"/></svg></button>
+<div class="ov" id="set"><div class="card">
+  <h2>Parent settings</h2>
+  <p class="note">Hold the ⚙️ button for 1.5 seconds to open this panel.</p>
+  <div id="rows"></div>
+  <button class="pri" id="done">Done</button>
+</div></div>
+<script>
+const KEY='letterPop';
+const DEF={n:6,sz:2,sp:1,lc:26,low:false,abc:false,words:true,say:true,show:true,snd:true,vib:false};
+const SL=['Small','Medium','Large'],FL=['Slow','Medium','Fast'];
+const CTRL=[
+ {k:'lc',t:'r',l:'Letters to use (A to…)',min:3,max:26,fmt:v=>'A–'+String.fromCharCode(64+v)},
+ {k:'n',t:'r',l:'Bubbles on screen',min:2,max:12},
+ {k:'sz',t:'r',l:'Bubble size',min:1,max:3,fmt:v=>SL[v-1]},
+ {k:'sp',t:'r',l:'Float speed',min:1,max:3,fmt:v=>FL[v-1]},
+ {k:'abc',t:'c',l:'Letters in ABC order'},
+ {k:'low',t:'c',l:'Lowercase letters in bubbles'},
+ {k:'words',t:'c',l:'Say a word (A, Apple)'},
+ {k:'say',t:'c',l:'Say letters aloud'},
+ {k:'show',t:'c',l:'Show letter on screen'},
+ {k:'snd',t:'c',l:'Pop sound'},
+ {k:'vib',t:'c',l:'Vibrate on pop'}];
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,Math.round(+v)||a));
+const S=Object.assign({},DEF);
+try{Object.assign(S,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){}
+CTRL.forEach(c=>{if(c.t==='r')S[c.k]=clamp(S[c.k],c.min,c.max)});
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+let W,H,M,dpr,parts=[],rings=[],labels=[],ac=null,last=0;
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;M=Math.min(W,H);
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+function say(t){ // device's built-in voice
+  if(!S.say||!('speechSynthesis' in window))return;
+  try{const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=.8;u.pitch=1.2;
+    speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}
+}
+function vib(){if(S.vib)try{navigator.vibrate&&navigator.vibrate(25)}catch(e){}}
+function popSound(kind){
+  if(!S.snd)return;
+  try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();const t=ac.currentTime;
+    if(kind==='balloon'){
+      const n=ac.sampleRate*.12|0,buf=ac.createBuffer(1,n,ac.sampleRate),d=buf.getChannelData(0);
+      for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+      const s=ac.createBufferSource(),g=ac.createGain();s.buffer=buf;g.gain.value=.45;s.connect(g);g.connect(ac.destination);s.start(t);
+      const o=ac.createOscillator(),og=ac.createGain();o.frequency.setValueAtTime(190,t);o.frequency.exponentialRampToValueAtTime(60,t+.1);
+      og.gain.setValueAtTime(.3,t);og.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(og);og.connect(ac.destination);o.start(t);o.stop(t+.13);
+    }else{
+      const o=ac.createOscillator(),g=ac.createGain(),f=520+Math.random()*420;
+      o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*.35,t+.14);
+      g.gain.setValueAtTime(.22,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);
+      o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.17);
+    }}catch(e){}
+}
+function burst(x,y,c,n,life,spread){
+  n=reduce?Math.ceil(n/2):n;
+  for(let i=0;i<n;i++){const a=i/n*6.28+Math.random()*.4,v=M*(spread||.25)*(.5+Math.random());
+    parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:M*(.012+Math.random()*.014),c,l:0,life:life||.55})}
+}
+function ring(x,y,r,c){rings.push({x,y,r,c,l:0})}
+function label(x,y,s,c,s2){labels.push({x,y,s,s2,c,l:0})}
+function drawFx(dt){
+  for(let i=rings.length-1;i>=0;i--){const q=rings[i];q.l+=dt;const k=q.l/.4;
+    if(k>=1){rings.splice(i,1);continue}
+    ctx.globalAlpha=1-k;ctx.beginPath();ctx.arc(q.x,q.y,q.r*(1+k*.5),0,6.283);
+    ctx.lineWidth=M*.008;ctx.strokeStyle=q.c;ctx.stroke()}
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.l+=dt;const k=p.l/p.life;
+    if(k>=1){parts.splice(i,1);continue}
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=M*.5*dt;
+    ctx.globalAlpha=1-k;ctx.beginPath();ctx.arc(p.x,p.y,p.r*(1-k*.5),0,6.283);ctx.fillStyle=p.c;ctx.fill()}
+  ctx.globalAlpha=1;
+  for(let i=labels.length-1;i>=0;i--){const q=labels[i];q.l+=dt;const k=q.l/1.5;
+    if(k>=1){labels.splice(i,1);continue}
+    const fs=M*.13*(.6+.4*Math.min(1,q.l/.15));
+    ctx.save();ctx.globalAlpha=k<.7?1:1-(k-.7)/.3;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+    const FF='"Trebuchet MS","Segoe UI",system-ui,sans-serif';
+    ctx.font=`800 ${fs}px ${FF}`;
+    const w=ctx.measureText(q.s).width/2+fs*.3,x=Math.min(W-w,Math.max(w,q.x)),y=q.y-(reduce?0:k*M*.08);
+    ctx.lineWidth=fs*.2;ctx.strokeStyle='#16365a';ctx.strokeText(q.s,x,y);ctx.fillStyle=q.c;ctx.fillText(q.s,x,y);
+    if(q.s2){const f2=fs*.5;ctx.font=`800 ${f2}px ${FF}`;ctx.lineWidth=f2*.2;
+      const w2=ctx.measureText(q.s2).width/2+f2*.3,x2=Math.min(W-w2,Math.max(w2,x));
+      ctx.strokeText(q.s2,x2,y+fs*.75);ctx.fillText(q.s2,x2,y+fs*.75)}
+    ctx.restore()}
+  ctx.globalAlpha=1;
+}
+function frame(ts){const dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+  ctx.clearRect(0,0,W,H);drawGame(dt,ts);drawFx(dt);requestAnimationFrame(frame)}
+cv.addEventListener('pointerdown',e=>{e.preventDefault();tap(e.clientX,e.clientY)});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+// Parent settings (built from CTRL): hold the gear for 1.5s
+const box=$('rows');
+function upd(c){const v=$('s_'+c.k).value;$('v_'+c.k).textContent=c.fmt?c.fmt(+v):v}
+CTRL.forEach(c=>{const r=document.createElement('div');r.className='row';
+  r.innerHTML=c.t==='r'?`<label for="s_${c.k}">${c.l}</label><input type="range" id="s_${c.k}" min="${c.min}" max="${c.max}"><span class="val" id="v_${c.k}"></span>`
+    :`<label for="s_${c.k}">${c.l}</label><input type="checkbox" id="s_${c.k}">`;
+  box.appendChild(r);if(c.t==='r')$('s_'+c.k).oninput=()=>upd(c)});
+function openSet(){CTRL.forEach(c=>{const e=$('s_'+c.k);if(c.t==='r'){e.value=S[c.k];upd(c)}else e.checked=S[c.k]});$('set').classList.add('on')}
+$('done').onclick=()=>{CTRL.forEach(c=>{const e=$('s_'+c.k);S[c.k]=c.t==='r'?clamp(e.value,c.min,c.max):e.checked});
+  save();$('set').classList.remove('on');restart()};
+let holdT=null;const gear=$('gear');
+function holdEnd(){clearTimeout(holdT);gear.classList.remove('hold')}
+gear.addEventListener('pointerdown',e=>{e.preventDefault();gear.classList.add('hold');holdT=setTimeout(()=>{holdEnd();openSet()},1500)});
+['pointerup','pointerleave','pointercancel'].forEach(t=>gear.addEventListener(t,holdEnd));
+addEventListener('resize',()=>{resize();restart()});
+
+const COLORS=['#ff6b6b','#ffa94d','#f5b800','#51c466','#4dabf7','#9775fa','#f783ac','#a9744f'];
+const WORDS=['Apple','Ball','Cat','Dog','Elephant','Fish','Grapes','Hat','Ice cream','Juice','Kite','Lion','Moon','Nest','Orange','Pig','Queen','Rainbow','Sun','Tree','Umbrella','Van','Whale','Xylophone','Yo-yo','Zebra'];
+const SIZES=[[.08,.12],[.11,.17],[.15,.22]],SPEEDS=[.06,.1,.16];
+let bs=[],seq=0;
+function nextLetter(){
+  if(S.abc){return (seq++)%S.lc}
+  for(let t=0;t<8;t++){const i=Math.random()*S.lc|0;if(!bs.some(b=>b.li===i))return i}
+  return Math.random()*S.lc|0;
+}
+function mk(initial){
+  const [a,b]=SIZES[S.sz-1],r=M*(a+Math.random()*(b-a));
+  return{r,li:nextLetter(),x:r+Math.random()*(W-2*r),y:initial?Math.random()*H:H+r+Math.random()*H*.4,dx:null,
+    ph:Math.random()*6.28,sw:M*(.01+Math.random()*.02),sv:.6+Math.random()*.8,t:0,
+    v:M*SPEEDS[S.sp-1]*(.8+Math.random()*.5),c:COLORS[Math.random()*COLORS.length|0]};
+}
+function restart(){bs=[];seq=0;for(let i=0;i<S.n;i++)bs.push(mk(true))}
+function tap(x,y){
+  for(let i=bs.length-1;i>=0;i--){const b=bs[i],bx=b.dx??b.x;
+    if(Math.hypot(x-bx,y-b.y)<=b.r*1.12){
+      const L=String.fromCharCode(65+b.li),w=WORDS[b.li];
+      popSound('bubble');vib();burst(bx,b.y,b.c,12);ring(bx,b.y,b.r*.9,b.c);
+      say(S.words?`${L}, ${w}`:L);
+      if(S.show)label(bx,b.y,L+L.toLowerCase(),b.c,S.words?w:null);
+      bs[i]=mk(false);return}}
+  ring(x,y,M*.03,'#ffffff');
+}
+function drawGame(dt){
+  for(let i=0;i<bs.length;i++){const b=bs[i];b.y-=b.v*dt;b.t+=dt;b.dx=b.x+Math.sin(b.ph+b.t*b.sv)*b.sw;
+    if(b.y<-b.r*1.2){bs[i]=mk(false);continue}
+    const x=b.dx,y=b.y,g=ctx.createRadialGradient(x-b.r*.3,y-b.r*.3,b.r*.1,x,y,b.r);
+    g.addColorStop(0,b.c+'88');g.addColorStop(.75,b.c+'bb');g.addColorStop(1,b.c+'ee');
+    ctx.beginPath();ctx.arc(x,y,b.r,0,6.283);ctx.fillStyle=g;ctx.fill();
+    ctx.lineWidth=Math.max(2,b.r*.04);ctx.strokeStyle='#ffffffcc';ctx.stroke();
+    ctx.beginPath();ctx.ellipse(x-b.r*.5,y-b.r*.55,b.r*.16,b.r*.09,-.7,0,6.283);ctx.fillStyle='#ffffffcc';ctx.fill();
+    const L=String.fromCharCode(65+b.li),ch=S.low?L.toLowerCase():L,fs=b.r*1.15;
+    ctx.font=`800 ${fs}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.lineJoin='round';ctx.lineWidth=fs*.14;ctx.strokeStyle='#16365a';ctx.strokeText(ch,x,y+fs*.05);
+    ctx.fillStyle='#fff';ctx.fillText(ch,x,y+fs*.05);
+  }
+}
+
+resize();restart();requestAnimationFrame(frame);
+</script>
+<a href="../index.html" aria-label="Home" style="position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;width:48px;height:48px;border-radius:50%;background:#ffffffaa;display:flex;align-items:center;justify-content:center;font-size:1.4rem;text-decoration:none;opacity:.55;z-index:4">🏠</a>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Falling Shapes &amp; Stars</title>
+<style>
+:root{--panel:#1b2a5c;--acc:#ffd166}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:linear-gradient(#0d1b4a,#27337a 65%,#4a3a8c);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#gear{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;width:48px;height:48px;border-radius:50%;border:0;background:#ffffff55;font-size:1.4rem;cursor:pointer;opacity:.6;touch-action:none}
+#gear svg{position:absolute;inset:-3px;width:54px;height:54px;transform:rotate(-90deg);pointer-events:none}
+#gear circle{fill:none;stroke:#ffd166;stroke-width:3;stroke-dasharray:157;stroke-dashoffset:157}
+#gear.hold circle{stroke-dashoffset:0;transition:stroke-dashoffset 1.5s linear}
+.ov{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+.ov.on{display:flex}
+.card{background:var(--panel);color:#fff;border-radius:22px;padding:22px;width:min(420px,100%);max-height:100%;overflow:auto}
+.card h2{margin:0 0 6px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0}
+.row input[type=range]{flex:1;accent-color:var(--acc)}
+.val{min-width:24px;text-align:right;font-weight:700}
+.note{color:#a9b7e6;font-size:.88rem;margin:2px 0 0}
+.pri{background:var(--acc);color:#222;border:0;border-radius:14px;padding:12px 22px;font:inherit;font-weight:700;cursor:pointer;margin-top:10px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<button id="gear" aria-label="Parent settings (hold)">⚙️<svg viewBox="0 0 54 54"><circle cx="27" cy="27" r="25"/></svg></button>
+
+<div class="ov" id="set"><div class="card">
+  <h2>Parent settings</h2>
+  <p class="note">Hold the ⚙️ button for 1.5 seconds to open this panel.</p>
+  <div class="row"><label for="n">Items on screen</label><input type="range" id="n" min="2" max="15"><span class="val" id="nv"></span></div>
+  <div class="row"><label for="sz">Size</label><input type="range" id="sz" min="1" max="3"><span class="val" id="szv"></span></div>
+  <div class="row"><label for="sp">Fall speed</label><input type="range" id="sp" min="1" max="3"><span class="val" id="spv"></span></div>
+  <div class="row"><label for="st">Stars only</label><input type="checkbox" id="st"></div>
+  <div class="row"><label for="say">Say shape names</label><input type="checkbox" id="say"></div>
+  <div class="row"><label for="show">Show names on screen</label><input type="checkbox" id="show"></div>
+  <div class="row"><label for="snd">Sound</label><input type="checkbox" id="snd"></div>
+  <div class="row"><label for="vib">Vibrate on catch</label><input type="checkbox" id="vib"></div>
+  <button class="pri" id="done">Done</button>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+const COLORS=['#ff6b6b','#ffa94d','#ffd43b','#69db7c','#4dabf7','#da77f2','#f783ac','#38d9a9'];
+// Shapes in a 100x100 box (SVG path syntax, drawn with Path2D)
+const STAR=new Path2D('M50 5L62 37L96 37L68 58L79 93L50 72L21 93L32 58L4 37L38 37Z');
+const SHAPES=[
+ STAR,
+ new Path2D('M50 8A42 42 0 1 1 49.99 8Z'),
+ new Path2D('M24 10H76Q90 10 90 24V76Q90 90 76 90H24Q10 90 10 76V24Q10 10 24 10Z'),
+ new Path2D('M50 8L94 88H6Z'),
+ new Path2D('M50 90C8 60 4 28 27 17 40 11 50 22 50 30 50 22 60 11 73 17 96 28 92 60 50 90Z'),
+ new Path2D('M50 5L93 50L50 95L7 50Z'),
+ new Path2D('M50 5L90 27V73L50 95L10 73V27Z')
+];
+const NAMES=['Star','Circle','Square','Triangle','Heart','Diamond','Hexagon'];
+const SIZES=[[.07,.1],[.1,.15],[.14,.2]],SPEEDS=[.07,.11,.17];
+const LBL=['Small','Medium','Large'],SLBL=['Slow','Medium','Fast'];
+const NOTES=[523.25,587.33,659.25,783.99,880,1046.5]; // gentle pentatonic
+let S={n:6,sz:2,sp:1,st:false,snd:true,vib:false,say:true,show:true};
+try{Object.assign(S,JSON.parse(localStorage.getItem('fallingStars')||'{}'))}catch(e){}
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,Math.round(+v)||a));
+S.n=clamp(S.n,2,15);S.sz=clamp(S.sz,1,3);S.sp=clamp(S.sp,1,3);
+function save(){try{localStorage.setItem('fallingStars',JSON.stringify(S))}catch(e){}}
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+let W,H,M,dpr,items=[],parts=[],rings=[],labels=[],ac=null,last=0,twinkles=[];
+function resize(){
+  dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;M=Math.min(W,H);
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  twinkles=Array.from({length:40},()=>({x:Math.random()*W,y:Math.random()*H,r:1+Math.random()*2,p:Math.random()*6.28}));
+}
+function mk(initial){
+  const [a,b]=SIZES[S.sz-1],r=M*(a+Math.random()*(b-a)),ix=S.st?0:Math.random()*SHAPES.length|0;
+  return{r,x:r+Math.random()*(W-2*r),y:initial?Math.random()*H:-r-Math.random()*H*.4,
+    ph:Math.random()*6.28,sw:M*(.01+Math.random()*.02),sv:.5+Math.random()*.7,
+    v:M*SPEEDS[S.sp-1]*(.8+Math.random()*.5),rot:Math.random()*6.28,rv:(Math.random()-.5)*.8,
+    c:COLORS[Math.random()*COLORS.length|0],ix:ix,sh:SHAPES[ix],t:0,dx:null,caught:-1};
+}
+function fill(){items=[];for(let i=0;i<S.n;i++)items.push(mk(true))}
+
+function say(t){ // spoken name, uses the device's built-in voice
+  if(!S.say||!('speechSynthesis' in window))return;
+  try{const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=.8;u.pitch=1.2;
+    speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}
+}
+function chime(){
+  if(S.snd)try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();
+    const t=ac.currentTime,f=NOTES[Math.random()*NOTES.length|0];
+    [[f,.2],[f*2,.07]].forEach(([fr,v])=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.type='sine';o.frequency.value=fr;
+      g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+.55);
+      o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.6);
+    });}catch(e){}
+  if(S.vib)try{navigator.vibrate&&navigator.vibrate(25)}catch(e){}
+}
+function catchIt(it){
+  it.caught=0;it.cx=it.dx??it.x;
+  const n=reduce?5:12;
+  for(let i=0;i<n;i++){const a=i/n*6.28+Math.random()*.4,v=M*(.2+Math.random()*.35);
+    parts.push({x:it.cx,y:it.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:M*(.014+Math.random()*.016),c:i%3?it.c:'#fff',l:0,rot:Math.random()*6.28})}
+  rings.push({x:it.cx,y:it.y,r:it.r*.8,c:it.c,l:0});
+  chime();say(NAMES[it.ix]);
+  if(S.show)labels.push({x:it.cx,y:it.y,s:NAMES[it.ix],c:it.c,l:0});
+}
+function tap(x,y){
+  for(let i=items.length-1;i>=0;i--){
+    const it=items[i];if(it.caught>=0)continue;
+    if(Math.hypot(x-(it.dx??it.x),y-it.y)<=it.r*1.15){catchIt(it);return}
+  }
+  rings.push({x,y,r:M*.03,c:'#ffffff',l:0});
+}
+cv.addEventListener('pointerdown',e=>{e.preventDefault();tap(e.clientX,e.clientY)});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+function drawShape(sh,x,y,r,rot,c,glow){
+  ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.scale(r*2/100,r*2/100);ctx.translate(-50,-50);
+  ctx.fillStyle=c;ctx.shadowColor=c;ctx.shadowBlur=glow;
+  ctx.fill(sh);ctx.restore();
+}
+function frame(ts){
+  const dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+  ctx.clearRect(0,0,W,H);
+  // background twinkles
+  for(const s of twinkles){
+    ctx.globalAlpha=.25+.35*Math.sin(s.p+ts/700);
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,6.283);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  for(let i=0;i<items.length;i++){
+    const it=items[i];
+    if(it.caught>=0){
+      it.caught+=dt;const k=it.caught/.35;
+      if(k>=1){items[i]=mk(false);continue}
+      ctx.globalAlpha=1-k;
+      drawShape(it.sh,it.cx,it.y,it.r*(1+.35*Math.sin(k*3.14)-k*.6),it.rot+k*3,it.c,20);
+      ctx.globalAlpha=1;continue;
+    }
+    it.y+=it.v*dt;it.t+=dt;it.rot+=it.rv*dt;
+    it.dx=it.x+Math.sin(it.ph+it.t*it.sv)*it.sw;
+    if(it.y>H+it.r*1.2){items[i]=mk(false);continue}
+    drawShape(it.sh,it.dx,it.y,it.r,it.rot,it.c,it.r*.35);
+  }
+  for(let i=rings.length-1;i>=0;i--){
+    const q=rings[i];q.l+=dt;const k=q.l/.45;
+    if(k>=1){rings.splice(i,1);continue}
+    ctx.globalAlpha=1-k;ctx.beginPath();ctx.arc(q.x,q.y,q.r*(1+k*.7),0,6.283);
+    ctx.lineWidth=M*.008;ctx.strokeStyle=q.c;ctx.stroke();
+  }
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i];p.l+=dt;const k=p.l/.6;
+    if(k>=1){parts.splice(i,1);continue}
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=M*.35*dt;
+    ctx.globalAlpha=1-k;
+    drawShape(STAR,p.x,p.y,p.r*(1-k*.4),p.rot+k*4,p.c,8);
+  }
+  for(let i=labels.length-1;i>=0;i--){ // name pops up where it was caught, then fades
+    const q=labels[i];q.l+=dt;const k=q.l/1.4;
+    if(k>=1){labels.splice(i,1);continue}
+    const sc=.6+.4*Math.min(1,q.l/.15),fs=M*.1*sc;
+    ctx.save();ctx.globalAlpha=k<.7?1:1-(k-.7)/.3;
+    ctx.font=`800 ${fs}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    const w=ctx.measureText(q.s).width/2+fs*.2,x=Math.min(W-w,Math.max(w,q.x)),y=q.y-(reduce?0:k*M*.08);
+    ctx.lineJoin='round';ctx.lineWidth=fs*.22;ctx.strokeStyle='#16365a';ctx.strokeText(q.s,x,y);
+    ctx.fillStyle=q.c;ctx.fillText(q.s,x,y);ctx.restore();
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(frame);
+}
+
+// Parent settings: hold the gear for 1.5s
+let holdT=null;const gear=$('gear');
+function holdStart(e){e.preventDefault();gear.classList.add('hold');holdT=setTimeout(()=>{holdEnd();openSet()},1500)}
+function holdEnd(){clearTimeout(holdT);gear.classList.remove('hold')}
+gear.addEventListener('pointerdown',holdStart);
+['pointerup','pointerleave','pointercancel'].forEach(t=>gear.addEventListener(t,holdEnd));
+function upd(){$('nv').textContent=$('n').value;$('szv').textContent=LBL[$('sz').value-1];$('spv').textContent=SLBL[$('sp').value-1]}
+function openSet(){
+  $('n').value=S.n;$('sz').value=S.sz;$('sp').value=S.sp;
+  $('st').checked=S.st;$('snd').checked=S.snd;$('vib').checked=S.vib;$('say').checked=S.say;$('show').checked=S.show;
+  upd();$('set').classList.add('on');
+}
+['n','sz','sp'].forEach(id=>$(id).oninput=upd);
+$('done').onclick=()=>{
+  S.n=clamp($('n').value,2,15);S.sz=clamp($('sz').value,1,3);S.sp=clamp($('sp').value,1,3);
+  S.st=$('st').checked;S.snd=$('snd').checked;S.vib=$('vib').checked;S.say=$('say').checked;S.show=$('show').checked;save();
+  $('set').classList.remove('on');fill();
+};
+addEventListener('resize',()=>{resize();fill()});
+resize();fill();requestAnimationFrame(frame);
+</script>
+<a href="../index.html" aria-label="Home" style="position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;width:48px;height:48px;border-radius:50%;background:#ffffffaa;display:flex;align-items:center;justify-content:center;font-size:1.4rem;text-decoration:none;opacity:.55;z-index:4">🏠</a>
+</body>
+</html>
