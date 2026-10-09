@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Color Baskets</title>
+<style>
+:root{--bg:#0b1d33;--panel:#14304f;--fg:#fff;--mut:#9fb6d0;--acc:#ffd166}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom);user-select:none;-webkit-user-select:none;overflow:hidden}
+header{display:flex;align-items:center;gap:12px;padding:10px 0}
+.bar{flex:1;height:14px;background:#ffffff22;border-radius:9px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--acc);border-radius:9px;transition:width .3s}
+.cnt{font-weight:700;min-width:64px;text-align:right}
+button{font:inherit;color:inherit;cursor:pointer}
+.gear{background:var(--panel);border:2px solid #ffffff33;border-radius:12px;padding:6px 12px;font-size:1.1rem}
+.stage{flex:0 0 32%;display:flex;align-items:center;justify-content:center;min-height:110px}
+#item{font-size:clamp(70px,16vh,150px);line-height:1;touch-action:none;cursor:grab;transition:transform .18s;filter:drop-shadow(0 6px 8px #0006)}
+#item svg{width:clamp(80px,18vh,160px);height:clamp(80px,18vh,160px);display:block}
+#item.fly{transition:transform .4s ease-in,opacity .4s;opacity:0}
+#item.in{animation:pop .3s}
+@keyframes pop{from{transform:scale(.3)}to{transform:scale(1)}}
+.grid{flex:1;display:grid;gap:10px;padding-bottom:12px;min-height:0}
+.basket{position:relative;z-index:1;background:none;border:0;padding:0;min-width:0;min-height:0;transition:transform .15s}
+.basket svg{width:100%;height:100%;display:block;overflow:visible;filter:drop-shadow(0 5px 6px #0005)}
+.basket:active{transform:scale(.96)}
+.basket.sel svg,.basket.hint svg{filter:drop-shadow(0 0 10px #fff)}
+.basket.hint{animation:pulse .9s infinite}
+.basket.shake{animation:shake .5s}
+.x{position:absolute;left:50%;top:56%;width:44%;max-width:90px;aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;z-index:2;animation:xin .8s forwards}
+.x svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 4px #0006)}
+@keyframes xin{0%{transform:translate(-50%,-50%) scale(.2);opacity:0}20%{transform:translate(-50%,-50%) scale(1.15);opacity:1}35%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0}}
+.basket.ok{animation:ok .35s}
+@keyframes pulse{50%{transform:scale(1.07)}}
+@keyframes shake{0%,100%{transform:translateX(0)}10%{transform:translateX(-10px) rotate(-3deg)}25%{transform:translateX(10px) rotate(3deg)}40%{transform:translateX(-9px) rotate(-2deg)}55%{transform:translateX(9px) rotate(2deg)}70%{transform:translateX(-5px)}85%{transform:translateX(5px)}}
+@keyframes ok{50%{transform:scale(1.1)}}
+.ov{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+.ov.on{display:flex}
+.card{background:var(--panel);border-radius:22px;padding:22px;width:min(420px,100%);max-height:100%;overflow:auto}
+.card h2{margin:0 0 14px;font-size:1.5rem}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0}
+.row input[type=number]{width:84px;font:inherit;padding:6px;border-radius:10px;border:2px solid #ffffff44;background:#0b1d33;color:#fff;text-align:center}
+.row input[type=range]{flex:1;accent-color:var(--acc)}
+.val{min-width:24px;text-align:right;font-weight:700}
+.pri{background:var(--acc);color:#222;border:0;border-radius:14px;padding:12px 20px;font-weight:700;font-size:1.05rem}
+.sec{background:transparent;border:2px solid #ffffff55;border-radius:14px;padding:10px 18px}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.note{color:var(--mut);font-size:.88rem;margin:4px 0 0}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar"><i id="prog"></i></div>
+  <div class="cnt" id="cnt">0 / 0</div>
+  <button class="gear" id="gear" aria-label="Settings">⚙️</button>
+</header>
+<div class="stage"><div id="item" aria-live="polite"></div></div>
+<div class="grid" id="grid"></div>
+
+<div class="ov" id="set"><div class="card">
+  <h2>Settings</h2>
+  <div class="row"><label for="nb">Baskets</label><input type="range" id="nb" min="2" max="9"><span class="val" id="nbv"></span></div>
+  <div class="row"><label for="ni">Items per round</label><input type="number" id="ni" min="1" max="100"></div>
+  <p class="note">Baskets: 2 to 9 (3×3 grid). Items: 1 to 100.</p>
+  <div class="row"><label for="hint">Hint when idle</label><input type="checkbox" id="hint"></div>
+  <div class="row"><label for="snd">Sound</label><input type="checkbox" id="snd"></div>
+  <div class="btns"><button class="pri" id="apply">Start new round</button><button class="sec" id="close">Cancel</button></div>
+</div></div>
+
+<div class="ov" id="end"><div class="card" style="text-align:center">
+  <h2 id="endt">All sorted! 🎉</h2>
+  <p id="endp" class="note"></p>
+  <div class="btns" style="justify-content:center"><button class="pri" id="again">Play again</button><button class="sec" id="endset">Settings</button></div>
+</div></div>
+
+<script>
+// Basket order: most distinct colors first
+const C=[
+ {n:'Red',c:'#ef5350',e:['🍎','🍓','🍒','🌹','🍅']},
+ {n:'Blue',c:'#42a5f5',e:['🫐','🐳','🦋','💎','🧢']},
+ {n:'Yellow',c:'#ffee58',e:['🍌','🌟','🌻','🍋','🐥']},
+ {n:'Green',c:'#66bb6a',e:['🍏','🥒','🐸','🌲','🥦']},
+ {n:'Orange',c:'#ffa726',e:['🍊','🥕','🎃','🦊','🏀']},
+ {n:'Purple',c:'#ab47bc',e:['🍇','🍆','🔮','🪻','☂️']},
+ {n:'Pink',c:'#f48fb1',e:['🌸','🐷','🍑','🦩','🎀']},
+ {n:'Brown',c:'#a1887f',e:['🐻','🥔','🌰','🍫','🪵']},
+ {n:'White',c:'#eceff1',e:['☁️','⛄','🥚','🐑','🦢']}
+];
+// Items are flat single-color shapes filled with the exact basket color
+const SH=[
+ '<circle cx="50" cy="50" r="42"/>',
+ '<rect x="10" y="10" width="80" height="80" rx="14"/>',
+ '<polygon points="50,8 94,88 6,88"/>',
+ '<polygon points="50,5 62,37 96,37 68,58 79,93 50,72 21,93 32,58 4,37 38,37"/>',
+ '<path d="M50 90C8 60 4 28 27 17 40 11 50 22 50 30 50 22 60 11 73 17 96 28 92 60 50 90Z"/>',
+ '<polygon points="50,5 93,50 50,95 7,50"/>',
+ '<path d="M50 6C50 6 17 46 17 64A33 33 0 0 0 83 64C83 46 50 6 50 6Z"/>',
+ '<polygon points="50,5 90,27 90,73 50,95 10,73 10,27"/>'
+];
+function dark(h,f=.55){const n=parseInt(h.slice(1),16);return '#'+[16,8,0].map(x=>Math.round(((n>>x)&255)*f).toString(16).padStart(2,'0')).join('')}
+function basketSvg(i){
+  const c=C[i].c,d=dark(c,.72),t=dark(c,.5),id='bc'+i,body='M22 76L178 76L160 158Q158 166 148 166L52 166Q42 166 40 158Z';
+  let w='';
+  for(const y of [102,128,154])w+=`<line x1="0" y1="${y}" x2="200" y2="${y}"/>`;
+  for(const x of [45,75,105,135,165])w+=`<line x1="${x}" y1="76" x2="${100+(x-100)*.8}" y2="166"/>`;
+  return `<svg viewBox="0 0 200 175" aria-hidden="true"><defs><clipPath id="${id}"><path d="${body}"/></clipPath></defs>
+<path d="M44 72C44 -6 156 -6 156 72" fill="none" stroke="${c}" stroke-width="11" stroke-linecap="round"/>
+<path d="M44 72C44 -6 156 -6 156 72" fill="none" stroke="${d}" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+<path d="${body}" fill="${c}"/>
+<g clip-path="url(#${id})" stroke="${d}" stroke-width="4" opacity=".8">${w}</g>
+<rect x="12" y="64" width="176" height="22" rx="11" fill="${c}" stroke="${d}" stroke-width="3"/>
+<circle cx="100" cy="123" r="31" fill="${c}"/>
+<text id="c${i}" x="100" y="124" text-anchor="middle" dominant-baseline="central" font-size="34" font-weight="800" fill="${t}" font-family="Trebuchet MS,Segoe UI,system-ui,sans-serif">0</text></svg>`;
+}
+function svg(o){return `<svg viewBox="0 0 100 100" fill="${C[o.ci].c}" aria-label="${C[o.ci].n} shape">${SH[o.s]}</svg>`}
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,Math.round(+v)||a));
+let S={b:2,n:6,hint:true,snd:true};
+try{Object.assign(S,JSON.parse(localStorage.getItem('colorBaskets')||'{}'))}catch(e){}
+S.b=clamp(S.b,2,9);S.n=clamp(S.n,1,100);
+function save(){try{localStorage.setItem('colorBaskets',JSON.stringify(S))}catch(e){}}
+
+let queue=[],idx=0,counts=[],sel=0,busy=false,hintT=null,ac=null;
+
+function tone(f,d,t='sine'){
+  if(!S.snd)return;
+  try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.value=f;
+    g.gain.setValueAtTime(.15,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);
+    o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d);}catch(e){}
+}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a}
+
+function cols(b){return b<=2?2:b===4?2:3}
+
+function build(){
+  const g=$('grid');g.innerHTML='';
+  const c=cols(S.b),r=Math.ceil(S.b/c);
+  g.style.gridTemplateColumns=`repeat(${c},1fr)`;g.style.gridTemplateRows=`repeat(${r},1fr)`;
+  for(let i=0;i<S.b;i++){
+    const b=document.createElement('button');
+    b.className='basket';b.dataset.i=i;
+    b.setAttribute('aria-label',C[i].n+' basket');
+    b.innerHTML=basketSvg(i);
+    b.onclick=()=>pick(i);
+    g.appendChild(b);
+  }
+}
+
+function start(){
+  // every color appears evenly, then shuffled
+  const q=[];
+  for(let i=0;i<S.n;i++)q.push(i%S.b);
+  shuffle(q);
+  queue=q.map(ci=>({ci,s:Math.random()*SH.length|0}));
+  idx=0;counts=Array(S.b).fill(0);sel=-1;busy=false;
+  build();mark();show();
+  $('end').classList.remove('on');
+}
+function mark(){document.querySelectorAll('.basket').forEach((b,i)=>b.classList.toggle('sel',i===sel))}
+function prog(){
+  $('prog').style.width=(idx/S.n*100)+'%';
+  $('cnt').textContent=idx+' / '+S.n;
+}
+function show(){
+  prog();
+  if(idx>=S.n){finish();return}
+  const it=$('item');
+  it.className='';it.style.transform='';it.style.opacity='';it.innerHTML=svg(queue[idx]);
+  void it.offsetWidth;it.classList.add('in');
+  busy=false;armHint();
+}
+function armHint(){
+  clearTimeout(hintT);
+  document.querySelectorAll('.basket').forEach(b=>b.classList.remove('hint'));
+  if(!S.hint)return;
+  hintT=setTimeout(()=>{
+    const b=document.querySelector(`.basket[data-i="${queue[idx]?.ci}"]`);
+    if(b)b.classList.add('hint');
+  },6000);
+}
+function pick(i){
+  if(busy||idx>=S.n)return;
+  const b=document.querySelector(`.basket[data-i="${i}"]`);
+  clearTimeout(hintT);
+  if(i===queue[idx].ci){
+    busy=true;
+    const it=$('item'),br=b.getBoundingClientRect(),ir=it.getBoundingClientRect();
+    fall(it,ir,br,b,i);
+    idx++;
+    setTimeout(show,380);
+  }else{
+    b.classList.remove('shake');void b.offsetWidth;b.classList.add('shake');
+    tone(200,.25,'triangle');
+    try{navigator.vibrate&&navigator.vibrate([60,40,60])}catch(e){}
+    b.querySelectorAll('.x').forEach(n=>n.remove());
+    const x=document.createElement('span');x.className='x';
+    x.innerHTML='<svg viewBox="0 0 100 100" aria-label="Wrong basket"><circle cx="50" cy="50" r="46" fill="#fff"/><circle cx="50" cy="50" r="46" fill="none" stroke="#e53935" stroke-width="6"/><path d="M32 32L68 68M68 32L32 68" stroke="#e53935" stroke-width="12" stroke-linecap="round"/></svg>';
+    b.appendChild(x);setTimeout(()=>x.remove(),850);
+    const it=$('item');it.style.transform='';
+    armHint();
+  }
+}
+// Item arcs over the basket, then drops behind the front of it and lands inside
+function fall(it,ir,br,b,i){
+  const quick=matchMedia('(prefers-reduced-motion:reduce)').matches,T=quick?150:700;
+  const c=document.createElement('div');
+  c.style.cssText=`position:fixed;z-index:0;pointer-events:none;left:${ir.left}px;top:${ir.top}px;width:${ir.width}px;height:${ir.height}px`;
+  c.innerHTML=it.innerHTML;c.firstChild.style.cssText='width:100%;height:100%;display:block';
+  document.body.appendChild(c);it.style.opacity=0;
+  const sc=Math.min(1,br.width*.42/ir.width),cx=ir.left+ir.width/2,cy=ir.top+ir.height/2;
+  const dx=br.left+br.width/2-cx,top=br.top+br.height*.2-cy,end=br.top+br.height*.78-cy;
+  const f=[{transform:'translate(0,0) scale(1) rotate(0)',easing:'ease-out'},
+    {transform:`translate(${dx}px,${top}px) scale(${sc}) rotate(120deg)`,offset:.5,easing:'cubic-bezier(.5,0,.9,.6)'},
+    {transform:`translate(${dx}px,${end}px) scale(${sc*.7}) rotate(200deg)`}];
+  const a=c.animate(f,{duration:T,fill:'forwards'});
+  setTimeout(()=>{ // landing
+    tone(520,.12);setTimeout(()=>tone(780,.18),80);
+    b.classList.remove('ok');void b.offsetWidth;b.classList.add('ok');
+    counts[i]++;$('c'+i).textContent=counts[i];
+  },T*.85);
+  a.onfinish=()=>c.remove();
+}
+function finish(){
+  $('item').textContent='🎉';
+  tone(523,.15);setTimeout(()=>tone(659,.15),150);setTimeout(()=>tone(784,.3),300);
+  $('endp').textContent=`${S.n} item${S.n>1?'s':''} sorted into ${S.b} baskets.`;
+  setTimeout(()=>$('end').classList.add('on'),500);
+}
+
+// Drag the item to a basket
+(function(){
+  const it=$('item');let sx,sy,drag=false;
+  it.addEventListener('pointerdown',e=>{if(busy)return;drag=true;sx=e.clientX;sy=e.clientY;it.setPointerCapture(e.pointerId);it.style.transition='none'});
+  it.addEventListener('pointermove',e=>{if(drag)it.style.transform=`translate(${e.clientX-sx}px,${e.clientY-sy}px)`});
+  it.addEventListener('pointerup',e=>{
+    if(!drag)return;drag=false;it.style.transition='';
+    const el=document.elementFromPoint(e.clientX,e.clientY),b=el&&el.closest('.basket');
+    it.style.transform='';
+    if(b)pick(+b.dataset.i);
+  });
+  it.addEventListener('pointercancel',()=>{drag=false;it.style.transition='';it.style.transform=''});
+})();
+
+// Keyboard: 1-9 pick; arrows move; Enter/Space choose
+addEventListener('keydown',e=>{
+  if($('set').classList.contains('on')||$('end').classList.contains('on'))return;
+  if(/^[1-9]$/.test(e.key)){if(+e.key<=S.b)pick(+e.key-1);return}
+  if(e.key==='ArrowRight'||e.key==='ArrowDown'){sel=(sel+1)%S.b;mark();e.preventDefault()}
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){sel=sel<0?S.b-1:(sel-1+S.b)%S.b;mark();e.preventDefault()}
+  else if(e.key==='Enter'||e.key===' '){if(sel>=0)pick(sel);e.preventDefault()}
+});
+
+addEventListener('pointerdown',()=>{if(sel>=0){sel=-1;mark()}});
+
+// Settings
+function openSet(){
+  $('nb').value=S.b;$('nbv').textContent=S.b;$('ni').value=S.n;
+  $('hint').checked=S.hint;$('snd').checked=S.snd;
+  $('end').classList.remove('on');$('set').classList.add('on');
+}
+$('gear').onclick=openSet;
+$('endset').onclick=openSet;
+$('nb').oninput=()=>$('nbv').textContent=$('nb').value;
+$('close').onclick=()=>{$('set').classList.remove('on');if(idx>=S.n)$('end').classList.add('on')};
+$('apply').onclick=()=>{
+  S.b=clamp($('nb').value,2,9);S.n=clamp($('ni').value,1,100);
+  S.hint=$('hint').checked;S.snd=$('snd').checked;
+  save();$('set').classList.remove('on');start();
+};
+$('again').onclick=start;
+start();
+</script>
+<a href="../index.html" aria-label="Home" style="position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;width:48px;height:48px;border-radius:50%;background:#ffffffaa;display:flex;align-items:center;justify-content:center;font-size:1.4rem;text-decoration:none;opacity:.55;z-index:4">🏠</a>
+</body>
+</html>
