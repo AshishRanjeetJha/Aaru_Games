@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fun Games</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:calc(20px + env(safe-area-inset-top)) 16px 30px;background:linear-gradient(#bfe6ff,#e9f7ff 60%,#fdf2ff);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;color:#16365a;-webkit-tap-highlight-color:transparent}
+h1{text-align:center;margin:0 0 18px;font-size:2rem}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;max-width:640px;margin:0 auto}
+@media(min-width:600px){.grid{grid-template-columns:repeat(3,1fr)}}
+a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;aspect-ratio:1;border-radius:24px;text-decoration:none;color:#fff;font-weight:700;font-size:1.1rem;text-align:center;padding:10px;box-shadow:0 6px 0 #0002;transition:transform .1s}
+a:active{transform:translateY(4px);box-shadow:0 2px 0 #0002}
+a span{font-size:3.2rem}
+</style>
+</head>
+<body>
+<h1>🎮 Pick a Game</h1>
+<div class="grid">
+<a href="games/bubble-pop.html" style="background:#3aa0ff"><span>🫧</span>Bubble Pop</a>
+<a href="games/letter-pop.html" style="background:#ff7a59"><span>🔤</span>Letter Pop</a>
+<a href="games/counting-balloons.html" style="background:#e5484d"><span>🎈</span>Counting Balloons</a>
+<a href="games/falling-stars.html" style="background:#8e5cf7"><span>⭐</span>Falling Shapes &amp; Stars</a>
+<a href="games/find-it.html" style="background:#16a085"><span>🔍</span>Find It</a>
+<a href="games/color-baskets.html" style="background:#f2a900"><span>🧺</span>Color Baskets</a>
+</div>
+</body>
+</html>
