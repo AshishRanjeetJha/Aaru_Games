@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Xylophone</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:linear-gradient(#fff4d6,#ffe3f1);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#bars{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:2.5vw;padding:calc(70px + env(safe-area-inset-top)) 3vw calc(30px + env(safe-area-inset-bottom));touch-action:none}
+.bar{flex:1;max-width:90px;border-radius:18px;box-shadow:0 8px 0 #0003;transition:transform .08s,filter .08s;touch-action:none}
+.bar.hit{transform:translateY(8px) scale(.97);filter:brightness(1.3);box-shadow:0 0 0 #0003}
+</style>
+</head>
+<body>
+<div id="bars"></div>
+<a href="../index.html" aria-label="Home" style="position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;width:48px;height:48px;border-radius:50%;background:#ffffffaa;display:flex;align-items:center;justify-content:center;font-size:1.4rem;text-decoration:none;opacity:.55;z-index:4">🏠</a>
+<script>
+const notes=[523.25,587.33,659.25,698.46,783.99,880,987.77,1046.5];
+const colors=['#e5484d','#ff8a3d','#ffc933','#4cc35a','#2bb3a3','#3aa0ff','#7a5cf7','#d65db1'];
+let ac=null;
+function audio(){
+  if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}
+  if(ac&&ac.state==='suspended')ac.resume();
+  return ac;
+}
+function play(f){
+  const a=audio();if(!a)return;
+  const t=a.currentTime,o=a.createOscillator(),g=a.createGain();
+  o.type='triangle';o.frequency.value=f;
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(.5,t+.01);
+  g.gain.exponentialRampToValueAtTime(.001,t+1.3);
+  o.connect(g);g.connect(a.destination);
+  o.start(t);o.stop(t+1.4);
+}
+const wrap=document.getElementById('bars');
+const els=notes.map((f,i)=>{
+  const b=document.createElement('div');
+  b.className='bar';
+  b.style.background=colors[i];
+  b.style.height=(92-i*6)+'%';
+  b.dataset.i=i;
+  wrap.appendChild(b);
+  return b;
+});
+function hit(i){
+  play(notes[i]);
+  const b=els[i];b.classList.add('hit');
+  setTimeout(()=>b.classList.remove('hit'),120);
+}
+const cur=new Map();
+function barAt(x,y){
+  const el=document.elementFromPoint(x,y);
+  return el&&el.classList.contains('bar')?+el.dataset.i:-1;
+}
+wrap.addEventListener('pointerdown',e=>{
+  wrap.setPointerCapture(e.pointerId);
+  const i=barAt(e.clientX,e.clientY);
+  cur.set(e.pointerId,i);
+  if(i>=0)hit(i);
+});
+wrap.addEventListener('pointermove',e=>{
+  if(!cur.has(e.pointerId))return;
+  const i=barAt(e.clientX,e.clientY);
+  if(i>=0&&i!==cur.get(e.pointerId)){cur.set(e.pointerId,i);hit(i);}
+});
+['pointerup','pointercancel'].forEach(t=>wrap.addEventListener(t,e=>cur.delete(e.pointerId)));
+</script>
+</body>
+</html>

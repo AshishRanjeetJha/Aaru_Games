@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Finger Paint</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:#fffdf6;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#clear{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;width:48px;height:48px;border-radius:50%;border:0;background:#ffffffaa;font-size:1.4rem;opacity:.55;z-index:4;cursor:pointer}
+#hint{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:5rem;pointer-events:none;opacity:.35;transition:opacity .4s}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">👆🌈</div>
+<button id="clear" aria-label="Clear">🗑️</button>
+<a href="../index.html" aria-label="Home" style="position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;width:48px;height:48px;border-radius:50%;background:#ffffffaa;display:flex;align-items:center;justify-content:center;font-size:1.4rem;text-decoration:none;opacity:.55;z-index:4">🏠</a>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,dpr;
+function size(){
+  const img=W?ctx.getImageData(0,0,cv.width,cv.height):null;
+  dpr=window.devicePixelRatio||1;W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineCap='round';ctx.lineJoin='round';
+  if(img)ctx.putImageData(img,0,0);
+}
+size();addEventListener('resize',size);
+let hue=Math.random()*360;
+const last=new Map();
+const hint=document.getElementById('hint');
+function dot(x,y){
+  ctx.fillStyle='hsl('+hue+',90%,55%)';
+  ctx.beginPath();ctx.arc(x,y,16,0,7);ctx.fill();
+}
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);
+  last.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  hint.style.opacity=0;
+  dot(e.clientX,e.clientY);
+});
+cv.addEventListener('pointermove',e=>{
+  const p=last.get(e.pointerId);if(!p)return;
+  hue=(hue+3)%360;
+  ctx.strokeStyle='hsl('+hue+',90%,55%)';
+  ctx.lineWidth=32;
+  ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(e.clientX,e.clientY);ctx.stroke();
+  p.x=e.clientX;p.y=e.clientY;
+});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,e=>last.delete(e.pointerId)));
+document.getElementById('clear').addEventListener('click',()=>{
+  ctx.clearRect(0,0,W,H);hint.style.opacity=.35;
+});
+</script>
+</body>
+</html>
